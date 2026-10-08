@@ -20,7 +20,10 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 20480
+          # Leave a small reserve on /. The rest of the disk is mounted on the
+          # workspace. Docker must not keep image layers on /.
+          root-reserve-mb: 8192
+          temp-reserve-mb: 100
           swap-size-mb: 1024
           remove-dotnet: "true"
           remove-android: "true"
@@ -32,6 +35,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Move Docker data onto the build volume
+        run: |
+          set -euo pipefail
+          sudo systemctl stop docker
+          docker_root="${GITHUB_WORKSPACE}/.docker-data"
+          sudo mkdir -p "${docker_root}"
+          tmp="$(mktemp)"
+          if [ -f /etc/docker/daemon.json ]; then
+            jq --arg root "${docker_root}" '. + {"data-root": $root}' /etc/docker/daemon.json > "${tmp}"
+          else
+            jq -n --arg root "${docker_root}" '{"data-root": $root}' > "${tmp}"
+          fi
+          sudo mv "${tmp}" /etc/docker/daemon.json
+          sudo systemctl start docker
+          docker info -f 'DockerRootDir={{.DockerRootDir}}'
+          df -h
 
       - name: Image coordinates
         run: |
