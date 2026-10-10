@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write
 
 jobs:
   publish:
@@ -66,8 +67,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-ccache
+          key: ubuntu22.04-ccache-${{ hashFiles('internal/core/**/*.cpp', 'internal/core/**/*.cc', 'internal/core/**/*.c', 'internal/core/**/*.h', 'internal/core/**/*.hpp', 'internal/core/**/CMakeLists.txt') }}
+          restore-keys: ubuntu22.04-ccache-
+
+      - name: Restore Conan cache
+        id: conan
+        uses: actions/cache/restore@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-conan2
+          key: ubuntu22.04-conan2-${{ hashFiles('internal/core/conanfile.py') }}
+          restore-keys: ubuntu22.04-conan2-
+
+      - name: Restore Go module cache
+        id: gomod
+        uses: actions/cache/restore@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-go-mod
+          key: ubuntu22.04-go-mod-${{ hashFiles('go.sum', 'pkg/go.sum', 'client/go.sum') }}
+          restore-keys: ubuntu22.04-go-mod-
+
       - name: Build Milvus
         run: ./build/builder.sh make install
+
+      - name: Save ccache
+        if: steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Save Conan cache
+        if: steps.conan.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-conan2
+          key: ${{ steps.conan.outputs.cache-primary-key }}
+
+      - name: Save Go module cache
+        if: steps.gomod.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .docker/amd64-ubuntu22.04-go-mod
+          key: ${{ steps.gomod.outputs.cache-primary-key }}
 
       - name: Build image
         run: ./build/build_image.sh
